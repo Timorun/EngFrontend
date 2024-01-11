@@ -177,9 +177,15 @@ function DashboardPage() {
   }, []);
 
   function fetchStudents() {
-    // Fetch student IDs when the component mounts
+    const token = localStorage.getItem("token"); // Get token from localStorage
+
     fetch(
-      "http://127.0.0.1:5000/api/studentids?module_code=FFF&presentation_code=2014B"
+      "http://127.0.0.1:5000/api/studentids?module_code=FFF&presentation_code=2014B",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`, // Attach token in Authorization header
+        },
+      }
     )
       .then((response) => response.json())
       .then((data) => {
@@ -202,8 +208,13 @@ function DashboardPage() {
 
   function fetchStudentPerformance(studentId, codeModule, codePresentation) {
     const url = `http://localhost:5000/api/studentassessment?student_id=${studentId}&code_module=${codeModule}&code_presentation=${codePresentation}`;
+    const token = localStorage.getItem("token"); // Get token from localStorage
 
-    fetch(url)
+    fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Attach token in Authorization header
+      },
+    })
       .then((response) => response.json())
       .then((data) => {
         console.log("data", data);
