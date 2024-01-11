@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Bar, Pie, Line } from "react-chartjs-2";
 import { Chart as ChartJS, registerables } from "chart.js";
 import {
@@ -14,13 +14,10 @@ import {
   CircularProgress,
   Modal,
   Box,
-  Button,
   IconButton,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
-import { useState, useEffect } from "react";
-
-ChartJS.register(...registerables);
+import axiosInstance from "../axiosInstance";
 
 ChartJS.register(...registerables);
 
@@ -177,19 +174,11 @@ function DashboardPage() {
   }, []);
 
   function fetchStudents() {
-    const token = localStorage.getItem("token"); // Get token from localStorage
-
-    fetch(
-      "http://127.0.0.1:5000/api/studentids?module_code=FFF&presentation_code=2014B",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`, // Attach token in Authorization header
-        },
-      }
-    )
-      .then((response) => response.json())
-      .then((data) => {
-        let studentsData = data?.student_ids.map((id) => ({
+    setLoading(true);
+    axiosInstance
+      .get("/api/studentids?module_code=FFF&presentation_code=2014B")
+      .then((response) => {
+        let studentsData = response.data.student_ids.map((id) => ({
           id,
           confidence: Math.floor(Math.random() * 28) + 55, // Random confidence between 55-82
           finalResult: ["Pass", "Fail", "Withdraw", "Distinction"][
@@ -197,11 +186,12 @@ function DashboardPage() {
           ],
         }));
         setStudents(studentsData);
-        setLoading(false);
       })
       .catch((error) => {
         console.error("Error fetching student IDs: ", error);
-        setError(error);
+        setError(error.toString());
+      })
+      .finally(() => {
         setLoading(false);
       });
   }
