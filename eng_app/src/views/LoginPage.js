@@ -41,7 +41,7 @@ function LoginPage() {
       if (err.response) {
         // The request was made and the server responded with a status code
         setError(
-          err.response.data.msg || "Login failed. Bad email or password."
+          err.response.data.msg || "Login failed. Wrong email or password."
         );
       } else if (err.request) {
         // The request was made but no response was received
@@ -185,9 +185,7 @@ function LoginPage() {
               color="secondary"
               onClick={() => setIsRegistering(!isRegistering)}
             >
-              {isRegistering
-                ? "Already have an account? Login"
-                : "Don't have an account? Register"}
+              {isRegistering ? "Already have an account? Login" : "Register"}
             </Button>
           </Box>
         </Paper>

@@ -12,110 +12,28 @@ import {
   Grid,
   Typography,
   CircularProgress,
-  Modal,
-  Box,
-  IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
 import axiosInstance from "../axiosInstance";
+
+import InteractionModal from "../modals/InteractionModal";
+import AssessmentModal from "../modals/AssessmentModal";
+import SubmissionModal from "../modals/SubmissionModal";
 
 ChartJS.register(...registerables);
 
-function CustomModal({ data, open, onClose }) {
-  return (
-    <Modal open={open} onClose={onClose}>
-      <Box
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: "80%", // Set a fixed width
-          maxWidth: "80%", // Adjusted to 80% for better screen fit
-          bgcolor: "white",
-          border: "1px solid #ddd",
-          borderRadius: 8,
-          boxShadow: "0px 4px 20px rgba(0, 0, 0, 0.1)",
-          p: 4,
-          overflowX: "auto", // Allow horizontal scrolling
-        }}
-      >
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          bgcolor="white"
-        >
-          <Box
-            flexGrow={1}
-            display="flex"
-            justifyContent="center"
-            bgcolor="white"
-          >
-            <Typography variant="h6">Assessment History</Typography>
-          </Box>
-          <IconButton onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
-        </Box>
-
-        {Array.isArray(data) && data.length > 0 ? (
-          <TableContainer
-            style={{
-              backgroundColor: "white",
-              overflowX: "auto", // Allow horizontal scrolling
-              maxHeight: "400px", // Set a fixed height
-              overflowY: "auto", // Allow vertical scrolling
-            }}
-          >
-            <Table stickyHeader aria-label="student performance data">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Assessment Type</TableCell>
-                  <TableCell align="right">Date</TableCell>
-                  <TableCell align="right">ID Assessment</TableCell>
-                  <TableCell align="right">Score</TableCell>
-                  <TableCell align="right">Weight</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.map((item, index) => (
-                  <TableRow key={index}>
-                    <TableCell component="th" scope="row">
-                      {item.assessment_type}
-                    </TableCell>
-                    <TableCell align="right">{item.date}</TableCell>
-                    <TableCell align="right">{item.id_assessment}</TableCell>
-                    <TableCell align="right">{item.score}</TableCell>
-                    <TableCell align="right">{item.weight}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <p>No data available</p>
-        )}
-      </Box>
-    </Modal>
-  );
-}
-
 function DashboardPage() {
-  // Generating student mock data
-  const studentData = Array.from({ length: 20 }, (_, index) => ({
-    id: Math.floor(Math.random() * (19999 - 11111 + 1)) + 11111,
-    finalResult: ["Pass", "Fail", "Withdraw", "Distinction"][
-      Math.floor(Math.random() * 4)
-    ],
-    confidence: Math.floor(Math.random() * 28) + 55, // Random confidence between 60-80
-  }));
-
   // Count predictions for charts
-  const predictionCounts = studentData.reduce((acc, student) => {
-    acc[student.finalResult] = (acc[student.finalResult] || 0) + 1;
-    return acc;
-  }, {});
+  const [predictionCounts, setPredictionCounts] = useState({
+    Pass: 0,
+    Fail: 0,
+    Withdraw: 0,
+    Distinction: 0,
+  });
 
   // Generate organic and random data progression of clicks for the line graph
   const generateRandomData = () => {
@@ -168,24 +86,107 @@ function DashboardPage() {
   const [students, setStudents] = useState([]);
   const [studentPerformance, setStudentPerformance] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [availableCourses, setAvailableCourses] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
+  const [studentInteractions, setStudentInteractions] = useState([]);
+  const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
+  const [studentSubmissions, setStudentSubmissions] = useState([]);
+  const [interactionChartData, setInteractionChartData] = useState(null);
 
   useEffect(() => {
-    fetchStudents();
+    axiosInstance
+      .get("/api/courses")
+      .then((response) => {
+        const courses = response.data.accessible_courses.map((course) => ({
+          moduleCode: course[0],
+          presentationCode: course[1],
+        }));
+        setAvailableCourses(courses);
+      })
+      .catch((error) => console.error("Error fetching courses:", error));
   }, []);
 
-  function fetchStudents() {
+  useEffect(() => {
+    if (selectedCourse) {
+      const courseCompositeCode = `${selectedCourse.moduleCode}-${selectedCourse.presentationCode}`;
+      fetchStudents(courseCompositeCode);
+    }
+  }, [selectedCourse]);
+
+  const handleCourseSelection = (courseCompositeCode) => {
+    console.log("Handlecourse");
+    const [moduleCode, presentationCode] = courseCompositeCode.split("-");
+    const selected = availableCourses.find(
+      (course) =>
+        course.moduleCode === moduleCode &&
+        course.presentationCode === presentationCode
+    );
+    setSelectedCourse(selected);
+  };
+
+  function handleShowInteractions(studentId) {
+    fetchStudentInteractions(studentId).then((interactions) => {
+      const chartData = prepareChartData(interactions);
+      setInteractionChartData(chartData);
+      setIsInteractionModalOpen(true);
+    });
+  }
+
+  function prepareChartData(interactions) {
+    // Example implementation to prepare chart data
+    const aggregatedData = aggregateInteractionsByDay(interactions);
+    return {
+      labels: Object.keys(aggregatedData),
+      datasets: [
+        {
+          label: "Interaction Clicks",
+          data: Object.values(aggregatedData),
+          fill: false,
+          borderColor: "rgb(75, 192, 192)",
+          tension: 0.1,
+        },
+      ],
+    };
+  }
+
+  function aggregateInteractionsByDay(interactions) {
+    const result = {};
+    interactions.forEach((interaction) => {
+      const day = interaction.date;
+      result[day] = (result[day] || 0) + interaction.clicks;
+    });
+    return result;
+  }
+
+  function fetchStudents(courseCompositeCode) {
+    const [moduleCode, presentationCode] = courseCompositeCode.split("-");
     setLoading(true);
     axiosInstance
-      .get("/api/studentids?module_code=FFF&presentation_code=2014B")
+      .get(
+        `/api/studentids?module_code=${moduleCode}&presentation_code=${presentationCode}`
+      )
       .then((response) => {
-        let studentsData = response.data.student_ids.map((id) => ({
-          id,
-          confidence: Math.floor(Math.random() * 28) + 55, // Random confidence between 55-82
-          finalResult: ["Pass", "Fail", "Withdraw", "Distinction"][
-            Math.floor(Math.random() * 4)
-          ],
-        }));
-        setStudents(studentsData);
+        const studentIDs = response.data.student_ids;
+
+        axiosInstance
+          .post("/api/predict", { student_ids: studentIDs })
+          .then((predictionResponse) => {
+            const studentsData = studentIDs.map((id, index) => ({
+              id,
+              finalResult: predictionResponse.data.student_ids[index],
+            }));
+            // Update chart data
+            const newPredictionCounts = studentsData.reduce((acc, student) => {
+              acc[student.finalResult] = (acc[student.finalResult] || 0) + 1;
+              return acc;
+            }, {});
+            setPredictionCounts(newPredictionCounts);
+            setStudents(studentsData);
+          })
+          .catch((predictionError) => {
+            console.error("Error fetching predictions: ", predictionError);
+          });
       })
       .catch((error) => {
         console.error("Error fetching student IDs: ", error);
@@ -196,19 +197,64 @@ function DashboardPage() {
       });
   }
 
-  function fetchStudentPerformance(studentId, codeModule, codePresentation) {
-    const url = `http://localhost:5000/api/studentassessment?student_id=${studentId}&code_module=${codeModule}&code_presentation=${codePresentation}`;
-    const token = localStorage.getItem("token"); // Get token from localStorage
+  function fetchStudentSubmissions(studentId) {
+    if (!selectedCourse) return;
+    const url = `/api/submissions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
 
-    fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`, // Attach token in Authorization header
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        console.log("data", data);
-        setStudentPerformance(data?.student_assessments);
+    axiosInstance
+      .get(url)
+      .then((response) => {
+        setStudentSubmissions(response.data.student_interactions);
+      })
+      .catch((error) => {
+        console.error("Error fetching submissions: ", error);
+      });
+  }
+
+  //   function fetchStudentInteractions(studentId) {
+  //     if (!selectedCourse) return;
+  //     const url = `/api/studentinteractions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
+
+  //     axiosInstance
+  //       .get(url)
+  //       .then((response) => {
+  //         setStudentInteractions(response.data.student_interactions);
+  //       })
+  //       .catch((error) => {
+  //         console.error("Error fetching interactions: ", error);
+  //       });
+  //   }
+
+  function fetchStudentInteractions(studentId) {
+    return new Promise((resolve, reject) => {
+      if (!selectedCourse) {
+        reject("No selected course");
+        return;
+      }
+
+      const url = `/api/studentinteractions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
+
+      axiosInstance
+        .get(url)
+        .then((response) => {
+          resolve(response.data.student_interactions);
+        })
+        .catch((error) => {
+          console.error("Error fetching interactions: ", error);
+          reject(error);
+        });
+    });
+  }
+
+  function fetchStudentPerformance(studentId) {
+    if (!selectedCourse) return;
+    const url = `/api/studentassessment?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
+
+    axiosInstance
+      .get(url)
+      .then((response) => {
+        console.log("data", response.data);
+        setStudentPerformance(response.data?.student_assessments);
       })
       .catch((error) => {
         console.error("Error fetching data: ", error);
@@ -218,16 +264,43 @@ function DashboardPage() {
   return (
     <div style={{ padding: "20px" }}>
       <Grid container justifyContent="space-between" alignItems="center">
+        {/* Dashboard Title */}
         <Grid item>
           <Typography variant="h4">Dashboard</Typography>
         </Grid>
+
+        {/* Course Day Information */}
         <Grid item>
           <Typography variant="h5" align="center">
             Course day 112
           </Typography>
         </Grid>
+
+        {/* Course Selection Dropdown */}
         <Grid item>
-          <Typography variant="h5">Course code: AAA 2014J</Typography>
+          <FormControl variant="outlined" style={{ minWidth: 120 }}>
+            <InputLabel id="course-selection-label">Select Course</InputLabel>
+            <Select
+              labelId="course-selection-label"
+              id="course-selection"
+              value={
+                selectedCourse
+                  ? `${selectedCourse.moduleCode}-${selectedCourse.presentationCode}`
+                  : ""
+              }
+              onChange={(e) => handleCourseSelection(e.target.value)}
+              label="Select Course"
+            >
+              {availableCourses.map((course, index) => (
+                <MenuItem
+                  key={index}
+                  value={`${course.moduleCode}-${course.presentationCode}`}
+                >
+                  {course.moduleCode} - {course.presentationCode}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Grid>
       </Grid>
 
@@ -247,51 +320,71 @@ function DashboardPage() {
         </Grid>
       </Grid>
 
-      <Typography variant="h6" align="center" style={{ marginTop: "20px" }}>
-        Total Online Learning Environment interactions per day
-      </Typography>
-      <div style={{ maxWidth: "60%", margin: "auto" }}>
-        <Line data={lineGraphData} />
-      </div>
-
       <h2>Student Predictions</h2>
       <TableContainer component={Paper} style={{ marginTop: "20px" }}>
-        <Table aria-label="student predictions">
+        <Table aria-label="Student predictions through LightGBM model">
           <TableHead>
             <TableRow>
               <TableCell>Student ID</TableCell>
-              <TableCell align="right">Confidence (%)</TableCell>
               <TableCell align="right">Predicted Result</TableCell>
             </TableRow>
           </TableHead>
-          {loading ? (
-            <CircularProgress />
-          ) : (
-            <TableBody>
-              {students.map((student) => (
-                <TableRow
-                  key={student.id}
-                  onClick={() => {
-                    fetchStudentPerformance(student?.id, "FFF", "2014B");
-                    setIsModalOpen(true); // Open the modal here
-                  }}
-                >
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={2} align="center">
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : (
+              students.map((student) => (
+                <TableRow key={student.id}>
                   <TableCell component="th" scope="row">
-                    {student?.id}
+                    {student.id}
                   </TableCell>
-                  <TableCell align="right">{student.confidence}</TableCell>
                   <TableCell align="right">{student.finalResult}</TableCell>
+                  <TableCell align="right">
+                    <Button
+                      onClick={() => {
+                        fetchStudentPerformance(student.id);
+                        setIsModalOpen(true);
+                      }}
+                    >
+                      Show Assessments
+                    </Button>
+                    <Button onClick={() => handleShowInteractions(student.id)}>
+                      Show Interactions
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        fetchStudentSubmissions(student.id);
+                        setIsSubmissionModalOpen(true);
+                      }}
+                    >
+                      Show Submissions
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          )}
+              ))
+            )}
+          </TableBody>
         </Table>
       </TableContainer>
 
-      <CustomModal
+      <AssessmentModal
         open={isModalOpen}
         data={studentPerformance}
         onClose={() => setIsModalOpen(false)}
+      />
+      <InteractionModal
+        open={isInteractionModalOpen}
+        chartData={interactionChartData}
+        onClose={() => setIsInteractionModalOpen(false)}
+      />
+      <SubmissionModal
+        open={isSubmissionModalOpen}
+        data={studentSubmissions}
+        onClose={() => setIsSubmissionModalOpen(false)}
       />
     </div>
   );
