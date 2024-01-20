@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Bar, Pie, Line } from "react-chartjs-2";
+import { Pie, Line } from "react-chartjs-2";
 import { Chart as ChartJS, registerables } from "chart.js";
 import {
   Paper,
@@ -31,7 +31,7 @@ function DashboardPage() {
   const [predictionCounts, setPredictionCounts] = useState({
     Pass: 0,
     Fail: 0,
-    Withdraw: 0,
+    Withdrawn: 0,
     Distinction: 0,
   });
 
@@ -65,10 +65,10 @@ function DashboardPage() {
   };
 
   const commonChartData = {
-    labels: ["Fail", "Withdraw", "Pass", "Distinction"],
+    labels: ["Fail", "Withdrawn", "Pass", "Distinction"],
     datasets: [
       {
-        data: ["Fail", "Withdraw", "Pass", "Distinction"].map(
+        data: ["Fail", "Withdrawn", "Pass", "Distinction"].map(
           (status) => predictionCounts[status] || 0
         ),
         backgroundColor: [
@@ -89,10 +89,20 @@ function DashboardPage() {
   const [availableCourses, setAvailableCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
-  const [studentInteractions, setStudentInteractions] = useState([]);
   const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
-  const [interactionChartData, setInteractionChartData] = useState(null);
+  const [StudentinteractionChartData, setStudentInteractionChartData] =
+    useState(null);
+  const [courseInteractions, setCourseInteractions] = useState([]);
+
+  useEffect(() => {
+    if (selectedCourse) {
+      fetchCourseInteractions(
+        selectedCourse.moduleCode,
+        selectedCourse.presentationCode
+      );
+    }
+  }, [selectedCourse]);
 
   useEffect(() => {
     axiosInstance
@@ -114,6 +124,32 @@ function DashboardPage() {
     }
   }, [selectedCourse]);
 
+  const fetchCourseInteractions = (moduleCode, presentationCode) => {
+    axiosInstance
+      .get(
+        `/api/courseinteractions?module_code=${moduleCode}&presentation_code=${presentationCode}`
+      )
+      .then((response) => {
+        setCourseInteractions(response.data.interaction_data);
+      })
+      .catch((error) =>
+        console.error("Error fetching course interactions:", error)
+      );
+  };
+
+  const interactionChartData = {
+    labels: courseInteractions.map((interaction) => interaction.date),
+    datasets: [
+      {
+        label: "Interaction count per day",
+        data: courseInteractions.map((interaction) => interaction.total_clicks),
+        fill: false,
+        borderColor: "rgb(53, 162, 235)",
+        tension: 0.1,
+      },
+    ],
+  };
+
   const handleCourseSelection = (courseCompositeCode) => {
     console.log("Handlecourse");
     const [moduleCode, presentationCode] = courseCompositeCode.split("-");
@@ -127,21 +163,25 @@ function DashboardPage() {
 
   function handleShowInteractions(studentId) {
     fetchStudentInteractions(studentId).then((interactions) => {
-      const chartData = prepareChartData(interactions);
-      setInteractionChartData(chartData);
+      const chartData = prepareStudentInteractionChartData(interactions);
+      console.log(chartData);
+      setStudentInteractionChartData(chartData);
       setIsInteractionModalOpen(true);
     });
   }
 
-  function prepareChartData(interactions) {
-    // Example implementation to prepare chart data
+  function prepareStudentInteractionChartData(interactions) {
     const aggregatedData = aggregateInteractionsByDay(interactions);
+    const sortedLabels = Object.keys(aggregatedData).sort(
+      (a, b) => parseFloat(a) - parseFloat(b)
+    );
+
     return {
-      labels: Object.keys(aggregatedData),
+      labels: sortedLabels,
       datasets: [
         {
           label: "Interaction Clicks",
-          data: Object.values(aggregatedData),
+          data: sortedLabels.map((label) => aggregatedData[label]),
           fill: false,
           borderColor: "rgb(75, 192, 192)",
           tension: 0.1,
@@ -150,13 +190,40 @@ function DashboardPage() {
     };
   }
 
+  // Make interactions cumulative based on previous day, to show evolution of interactions
   function aggregateInteractionsByDay(interactions) {
+    var prevday = -200;
     const result = {};
     interactions.forEach((interaction) => {
       const day = interaction.date;
-      result[day] = (result[day] || 0) + interaction.clicks;
+      result[day] = (result[prevday] || 0) + interaction.sum_click;
+      prevday = day;
     });
+    console.log(result);
     return result;
+  }
+
+  // Fetch a students interaction history
+  function fetchStudentInteractions(studentId) {
+    return new Promise((resolve, reject) => {
+      if (!selectedCourse) {
+        reject("No selected course");
+        return;
+      }
+
+      const url = `/api/studentinteractions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
+
+      axiosInstance
+        .get(url)
+        .then((response) => {
+          resolve(response.data.student_interactions);
+          console.log(response.data.student_interactions);
+        })
+        .catch((error) => {
+          console.error("Error fetching interactions: ", error);
+          reject(error);
+        });
+    });
   }
 
   function fetchStudents(courseCompositeCode) {
@@ -172,10 +239,21 @@ function DashboardPage() {
         axiosInstance
           .post("/api/predict", { student_ids: studentIDs })
           .then((predictionResponse) => {
-            const studentsData = studentIDs.map((id, index) => ({
+            let studentsData = studentIDs.map((id, index) => ({
               id,
               finalResult: predictionResponse.data.student_ids[index],
             }));
+
+            // Sort students by prediction, prioritizing "Withdrawn" and "Fail"
+            studentsData.sort((a, b) => {
+              if (a.finalResult === b.finalResult) return 0;
+              if (a.finalResult === "Withdrawn" || a.finalResult === "Fail")
+                return -1;
+              if (b.finalResult === "Withdrawn" || b.finalResult === "Fail")
+                return 1;
+              return 0;
+            });
+
             // Update chart data
             const newPredictionCounts = studentsData.reduce((acc, student) => {
               acc[student.finalResult] = (acc[student.finalResult] || 0) + 1;
@@ -211,41 +289,6 @@ function DashboardPage() {
       });
   }
 
-  //   function fetchStudentInteractions(studentId) {
-  //     if (!selectedCourse) return;
-  //     const url = `/api/studentinteractions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
-
-  //     axiosInstance
-  //       .get(url)
-  //       .then((response) => {
-  //         setStudentInteractions(response.data.student_interactions);
-  //       })
-  //       .catch((error) => {
-  //         console.error("Error fetching interactions: ", error);
-  //       });
-  //   }
-
-  function fetchStudentInteractions(studentId) {
-    return new Promise((resolve, reject) => {
-      if (!selectedCourse) {
-        reject("No selected course");
-        return;
-      }
-
-      const url = `/api/studentinteractions?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
-
-      axiosInstance
-        .get(url)
-        .then((response) => {
-          resolve(response.data.student_interactions);
-        })
-        .catch((error) => {
-          console.error("Error fetching interactions: ", error);
-          reject(error);
-        });
-    });
-  }
-
   function fetchStudentPerformance(studentId) {
     if (!selectedCourse) return;
     const url = `/api/studentassessment?student_id=${studentId}&code_module=${selectedCourse.moduleCode}&code_presentation=${selectedCourse.presentationCode}`;
@@ -272,7 +315,7 @@ function DashboardPage() {
         {/* Course Day Information */}
         <Grid item>
           <Typography variant="h5" align="center">
-            Course day 112
+            132 days into the course
           </Typography>
         </Grid>
 
@@ -306,7 +349,7 @@ function DashboardPage() {
 
       <Grid container spacing={2} style={{ marginTop: "20px" }}>
         <Grid item xs={12} md={6}>
-          <Bar data={commonChartData} />
+          <Line data={interactionChartData} />
         </Grid>
         <Grid
           item
@@ -320,9 +363,9 @@ function DashboardPage() {
         </Grid>
       </Grid>
 
-      <h2>Student Predictions</h2>
+      <h2>Student Predictions, showing at-risk students first</h2>
       <TableContainer component={Paper} style={{ marginTop: "20px" }}>
-        <Table aria-label="Student predictions through LightGBM model">
+        <Table aria-label="Student predictions through LightGBM model, showing at-risk students first">
           <TableHead>
             <TableRow>
               <TableCell>Student ID</TableCell>
@@ -378,7 +421,7 @@ function DashboardPage() {
       />
       <InteractionModal
         open={isInteractionModalOpen}
-        chartData={interactionChartData}
+        chartData={StudentinteractionChartData}
         onClose={() => setIsInteractionModalOpen(false)}
       />
       <SubmissionModal

@@ -65,9 +65,9 @@ function AssessmentModal({ data, open, onClose }) {
                 <TableRow>
                   <TableCell>Assessment Type</TableCell>
                   <TableCell align="right">Date</TableCell>
-                  <TableCell align="right">ID Assessment</TableCell>
+                  <TableCell align="right">Assessment ID</TableCell>
                   <TableCell align="right">Score</TableCell>
-                  <TableCell align="right">Weight</TableCell>
+                  <TableCell align="right">Weight %</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
