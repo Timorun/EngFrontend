@@ -37,6 +37,12 @@ npm start
 
 Open http://localhost:3000 to view it in the browser.
 
+## Usage
+(Depending on modification to the backend)
+You can log in using credentials: user1@example.com, pw1 or user2@example.com, pw2.
+This leads to the dashboard where can select a course from the dropdown list.
+Which will display the data accordingly.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE.txt file for details.
